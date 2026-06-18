@@ -145,6 +145,62 @@
   .backup{display:flex; gap:8px; justify-content:center; margin-top:18px;}
   .backup label{display:inline-block; margin:0;}
 
+  /* ─── Login overlay ─── */
+  .login-overlay{
+    position:fixed; inset:0; background:var(--bg);
+    display:flex; align-items:center; justify-content:center;
+    z-index:100; padding:24px;
+  }
+  .login-overlay.hidden{display:none;}
+  .login-card{
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:20px; padding:32px 28px; width:100%; max-width:360px;
+    box-shadow:0 4px 24px rgba(28,32,28,0.08);
+    text-align:center;
+  }
+  .login-card .bolt{margin:0 auto 16px;}
+  .login-card h2{font-family:var(--font-display); font-size:18px; font-weight:600; margin:0 0 6px;}
+  .login-card p{font-size:13px; color:var(--ink-2); margin:0 0 20px;}
+  .login-card input[type=text]{
+    width:100%; font-size:16px; padding:11px 14px;
+    border:1px solid var(--border); border-radius:10px;
+    background:var(--bg); color:var(--ink);
+    font-family:var(--font-body); margin-bottom:12px;
+    transition:border-color .15s, box-shadow .15s;
+  }
+  .login-card input[type=text]:focus{
+    outline:none; border-color:var(--accent);
+    box-shadow:0 0 0 3px var(--accent-soft);
+  }
+  .login-err{font-size:12px; color:var(--bad); margin:-4px 0 10px; display:none;}
+
+  /* ─── User chip in header ─── */
+  .user-chip{
+    margin-left:auto; display:flex; align-items:center; gap:6px;
+    background:var(--surface-2); border-radius:20px; padding:5px 12px;
+    font-size:12.5px; color:var(--ink-2); cursor:pointer; border:none;
+    font-family:var(--font-body);
+  }
+  .user-chip:hover{background:var(--border);}
+  .user-chip svg{width:13px; height:13px; flex-shrink:0;}
+
+  /* ─── Google Sheet status ─── */
+  .sheet-status{
+    font-size:12px; color:var(--ink-2); text-align:center;
+    margin-top:6px; min-height:16px;
+  }
+  .sheet-status.ok{color:var(--good);}
+  .sheet-status.err{color:var(--bad);}
+
+  /* ─── Setup banner ─── */
+  .setup-banner{
+    background:var(--accent-soft); border:1px solid var(--accent);
+    border-radius:12px; padding:14px 16px; margin-bottom:18px;
+    font-size:13px; color:var(--accent-ink);
+  }
+  .setup-banner strong{display:block; margin-bottom:4px;}
+  .setup-banner a{color:var(--accent-ink); font-weight:600;}
+
   @media (max-width:420px){
     .row2{grid-template-columns:1fr; gap:8px;}
     .arrow{display:none;}
@@ -153,6 +209,20 @@
 </style>
 </head>
 <body>
+<!-- ─── Login Overlay ─── -->
+<div class="login-overlay" id="login-overlay">
+  <div class="login-card">
+    <div class="bolt">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+    </div>
+    <h2>บันทึกค่าไฟ</h2>
+    <p>ใส่ชื่อผู้ใช้เพื่อเริ่มบันทึกข้อมูล</p>
+    <input type="text" id="login-input" placeholder="ชื่อผู้ใช้ เช่น สมชาย" maxlength="40" autocomplete="username">
+    <p class="login-err" id="login-err">กรุณาใส่ชื่อผู้ใช้ก่อนนะครับ</p>
+    <button class="primary" id="login-btn">เริ่มใช้งาน</button>
+  </div>
+</div>
+
 <div class="wrap">
 
   <header>
@@ -163,7 +233,17 @@
       <h1>บันทึกค่าไฟ</h1>
       <p class="eyebrow">คำนวณตามอัตรา MEA ประเภท 1.2 · เทียบกันได้ทุกรอบบิล</p>
     </div>
+    <button class="user-chip" id="user-chip" title="เปลี่ยนผู้ใช้">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+      <span id="user-chip-name">–</span>
+    </button>
   </header>
+
+  <!-- Setup banner — แสดงถ้ายังไม่ได้ตั้ง Google Sheet URL -->
+  <div class="setup-banner" id="setup-banner">
+    <strong>⚡ ตั้งค่า Google Sheet เพื่อเก็บข้อมูลบนคลาวด์</strong>
+    ดูวิธีสร้างได้ในไฟล์ <code>SETUP_GOOGLE_SHEET.md</code> แล้วใส่ URL ใน <code>SHEET_WEBHOOK_URL</code> ในโค้ด
+  </div>
 
   <div class="card">
     <div class="row2">
@@ -202,6 +282,7 @@
   <div class="receipt-tear"></div>
 
   <button class="primary" id="save-btn">บันทึกรอบนี้</button>
+  <p class="sheet-status" id="sheet-status"></p>
   <p class="toast" id="toast">บันทึกแล้ว</p>
 
   <div class="hist-head">
@@ -225,10 +306,83 @@
 </div>
 
 <script>
+// ══════════════════════════════════════════════
+//  ⚡ ตั้งค่า Google Sheet Web App URL ตรงนี้
+//  ดูวิธีสร้างได้ในไฟล์ SETUP_GOOGLE_SHEET.md
+// ══════════════════════════════════════════════
+const SHEET_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbzXoG_vMKT8ZORMzLKapH99OjLcWkzuvBv-iAw-eR_gHoG4cdFWJSQJQhmnC1ldLY_tig/exec';   // ← วาง URL ของคุณตรงนี้
+
+// ─── Storage keys ───
 const STORAGE_KEY = 'entries';
-const LS_KEY = 'electric_bill_entries_v1';
+const LS_KEY      = 'electric_bill_entries_v1';
+const USER_KEY    = 'electric_bill_user_v1';
+
 const hasArtifactStorage = typeof window.storage !== 'undefined' && window.storage && typeof window.storage.get === 'function';
 
+// ─── User login ───
+let currentUser = localStorage.getItem(USER_KEY) || '';
+
+function showLogin(){ document.getElementById('login-overlay').classList.remove('hidden'); }
+function hideLogin(){ document.getElementById('login-overlay').classList.add('hidden'); }
+
+function applyUser(name){
+  currentUser = name.trim();
+  localStorage.setItem(USER_KEY, currentUser);
+  document.getElementById('user-chip-name').textContent = currentUser;
+  hideLogin();
+}
+
+document.getElementById('login-btn').addEventListener('click', () => {
+  const val = document.getElementById('login-input').value.trim();
+  const err = document.getElementById('login-err');
+  if(!val){ err.style.display='block'; return; }
+  err.style.display='none';
+  applyUser(val);
+});
+document.getElementById('login-input').addEventListener('keydown', e => {
+  if(e.key === 'Enter') document.getElementById('login-btn').click();
+});
+document.getElementById('user-chip').addEventListener('click', () => {
+  document.getElementById('login-input').value = currentUser;
+  showLogin();
+});
+
+// ─── Google Sheet sync ───
+async function sendToSheet(entry){
+  if(!SHEET_WEBHOOK_URL) return { ok: false, reason: 'no_url' };
+  try{
+    const res = await fetch(SHEET_WEBHOOK_URL, {
+      method:'POST', mode:'no-cors',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        user:    currentUser,
+        date:    entry.date,
+        prev:    entry.prev,
+        curr:    entry.curr,
+        units:   entry.units,
+        total:   entry.total.toFixed(2),
+        id:      entry.id
+      })
+    });
+    return { ok: true };
+  }catch(e){
+    return { ok: false, reason: e.message };
+  }
+}
+
+function setSheetStatus(msg, cls){
+  const el = document.getElementById('sheet-status');
+  el.textContent = msg;
+  el.className = 'sheet-status ' + (cls||'');
+  if(cls === 'ok') setTimeout(()=>{ el.textContent=''; el.className='sheet-status'; }, 3000);
+}
+
+// ─── Setup banner visibility ───
+function updateSetupBanner(){
+  document.getElementById('setup-banner').style.display = SHEET_WEBHOOK_URL ? 'none' : '';
+}
+
+// ─── LocalStorage / Artifact storage ───
 async function loadEntries(){
   if(hasArtifactStorage){
     try{
@@ -252,134 +406,106 @@ async function persistEntries(arr){
 
 let entries = [];
 
-function fmtMoney(n){
-  return new Intl.NumberFormat('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}).format(n);
-}
-function fmtInt(n){
-  return new Intl.NumberFormat('en-US').format(Math.round(n));
-}
-function fmtDate(iso){
-  return new Intl.DateTimeFormat('th-TH', {day:'numeric', month:'short', year:'numeric'}).format(new Date(iso));
-}
+function fmtMoney(n){ return new Intl.NumberFormat('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}).format(n); }
+function fmtInt(n){ return new Intl.NumberFormat('en-US').format(Math.round(n)); }
+function fmtDate(iso){ return new Intl.DateTimeFormat('th-TH',{day:'numeric',month:'short',year:'numeric'}).format(new Date(iso)); }
 
 function computeBill(units, ftRate){
-  const tier1 = Math.min(units, 150);
-  const tier2 = Math.min(Math.max(units-150,0), 250);
-  const tier3 = Math.max(units-400, 0);
-  const t1amt = tier1*3.2484, t2amt = tier2*4.2218, t3amt = tier3*4.4217;
-  const energy = t1amt+t2amt+t3amt;
-  const service = 24.62;
-  const ftAmt = units*ftRate;
-  const sub1 = energy+service;
-  const sub2 = sub1+ftAmt;
-  const vat = sub2*0.07;
-  const total = sub2+vat;
+  const tier1=Math.min(units,150), tier2=Math.min(Math.max(units-150,0),250), tier3=Math.max(units-400,0);
+  const t1amt=tier1*3.2484, t2amt=tier2*4.2218, t3amt=tier3*4.4217;
+  const energy=t1amt+t2amt+t3amt, service=24.62, ftAmt=units*ftRate;
+  const sub1=energy+service, sub2=sub1+ftAmt, vat=sub2*0.07, total=sub2+vat;
   return {tier1,tier2,tier3,t1amt,t2amt,t3amt,energy,service,ftAmt,sub1,sub2,vat,total};
 }
 
-function rowHtml(label, value, cls){
-  return `<div class="r-row ${cls||''}"><span>${label}</span><span>${fmtMoney(value)} บาท</span></div>`;
-}
+function rowHtml(label,value,cls){ return `<div class="r-row ${cls||''}"><span>${label}</span><span>${fmtMoney(value)} บาท</span></div>`; }
 
 function renderReceipt(units, b){
-  let html = '';
-  if(b.tier1>0) html += rowHtml(b.tier1 + ' หน่วยแรก (1-150)', b.t1amt, 'muted');
-  if(b.tier2>0) html += rowHtml(b.tier2 + ' หน่วยถัดไป (151-400)', b.t2amt, 'muted');
-  if(b.tier3>0) html += rowHtml(b.tier3 + ' หน่วย (401 ขึ้นไป)', b.t3amt, 'muted');
-  html += rowHtml('ค่าพลังงานไฟฟ้า', b.energy);
-  html += rowHtml('ค่าบริการ', b.service);
-  html += rowHtml('รวมค่าไฟฟ้าและค่าบริการ', b.sub1, 'total');
-  html += rowHtml('ค่าไฟฟ้าผันแปร (Ft)', b.ftAmt);
-  html += rowHtml('รวมค่าไฟฟ้าผันแปร', b.sub2, 'total');
-  html += rowHtml('ภาษีมูลค่าเพิ่ม 7%', b.vat);
-  html += `<div class="r-row grand"><span>รวมที่ต้องชำระ</span><span>${fmtMoney(b.total)} บาท</span></div>`;
-  document.getElementById('receipt').innerHTML = html;
+  let html='';
+  if(b.tier1>0) html+=rowHtml(b.tier1+' หน่วยแรก (1-150)',b.t1amt,'muted');
+  if(b.tier2>0) html+=rowHtml(b.tier2+' หน่วยถัดไป (151-400)',b.t2amt,'muted');
+  if(b.tier3>0) html+=rowHtml(b.tier3+' หน่วย (401 ขึ้นไป)',b.t3amt,'muted');
+  html+=rowHtml('ค่าพลังงานไฟฟ้า',b.energy);
+  html+=rowHtml('ค่าบริการ',b.service);
+  html+=rowHtml('รวมค่าไฟฟ้าและค่าบริการ',b.sub1,'total');
+  html+=rowHtml('ค่าไฟฟ้าผันแปร (Ft)',b.ftAmt);
+  html+=rowHtml('รวมค่าไฟฟ้าผันแปร',b.sub2,'total');
+  html+=rowHtml('ภาษีมูลค่าเพิ่ม 7%',b.vat);
+  html+=`<div class="r-row grand"><span>รวมที่ต้องชำระ</span><span>${fmtMoney(b.total)} บาท</span></div>`;
+  document.getElementById('receipt').innerHTML=html;
 }
 
-let lastCalc = null;
+let lastCalc=null;
 
 function calc(){
-  const prev = parseFloat(document.getElementById('prev').value) || 0;
-  const curr = parseFloat(document.getElementById('curr').value);
-  const ftRate = parseFloat(document.getElementById('ft').value) || 0;
-  const mult = parseFloat(document.getElementById('mult').value) || 1;
-
-  const warn = document.getElementById('warn');
-  const validCurr = !isNaN(curr);
-  warn.style.display = (validCurr && curr < prev) ? 'block' : 'none';
-
-  const units = Math.round(Math.max(((validCurr ? curr : prev) - prev) * mult, 0));
-  document.getElementById('units-out').textContent = fmtInt(units) + ' หน่วย';
-
-  const b = computeBill(units, ftRate);
-  renderReceipt(units, b);
-  lastCalc = {prev, curr: validCurr ? curr : prev, units, ftRate, mult, ...b};
-
-  document.getElementById('save-btn').disabled = !validCurr || curr < prev;
+  const prev=parseFloat(document.getElementById('prev').value)||0;
+  const curr=parseFloat(document.getElementById('curr').value);
+  const ftRate=parseFloat(document.getElementById('ft').value)||0;
+  const mult=parseFloat(document.getElementById('mult').value)||1;
+  const warn=document.getElementById('warn');
+  const validCurr=!isNaN(curr);
+  warn.style.display=(validCurr&&curr<prev)?'block':'none';
+  const units=Math.round(Math.max(((validCurr?curr:prev)-prev)*mult,0));
+  document.getElementById('units-out').textContent=fmtInt(units)+' หน่วย';
+  const b=computeBill(units,ftRate);
+  renderReceipt(units,b);
+  lastCalc={prev,curr:validCurr?curr:prev,units,ftRate,mult,...b};
+  document.getElementById('save-btn').disabled=!validCurr||curr<prev;
 }
 
 function metersFromHistory(){
-  if(entries.length === 0) return;
-  document.getElementById('prev').value = entries[0].curr;
+  if(entries.length===0) return;
+  document.getElementById('prev').value=entries[0].curr;
 }
 
 function renderMetrics(){
-  const metricsEl = document.getElementById('metrics');
-  const sparkWrap = document.getElementById('spark-wrap');
-  if(entries.length === 0){ metricsEl.style.display='none'; sparkWrap.style.display='none'; return; }
+  const metricsEl=document.getElementById('metrics');
+  const sparkWrap=document.getElementById('spark-wrap');
+  if(entries.length===0){ metricsEl.style.display='none'; sparkWrap.style.display='none'; return; }
   metricsEl.style.display='grid';
-  const avgUnits = entries.reduce((s,e)=>s+e.units,0)/entries.length;
-  const avgTotal = entries.reduce((s,e)=>s+e.total,0)/entries.length;
-  document.getElementById('avg-units').textContent = fmtInt(avgUnits) + ' หน่วย';
-  document.getElementById('avg-total').textContent = fmtMoney(avgTotal) + ' บาท';
-
-  if(entries.length >= 2){
+  const avgUnits=entries.reduce((s,e)=>s+e.units,0)/entries.length;
+  const avgTotal=entries.reduce((s,e)=>s+e.total,0)/entries.length;
+  document.getElementById('avg-units').textContent=fmtInt(avgUnits)+' หน่วย';
+  document.getElementById('avg-total').textContent=fmtMoney(avgTotal)+' บาท';
+  if(entries.length>=2){
     sparkWrap.style.display='block';
-    const chrono = [...entries].reverse();
-    const vals = chrono.map(e=>e.total);
-    const min = Math.min(...vals), max = Math.max(...vals);
-    const range = (max-min) || 1;
-    const w = 500, h = 80, pad = 8;
-    const pts = vals.map((v,i)=>{
-      const x = pad + (i/(vals.length-1))*(w-pad*2);
-      const y = h - pad - ((v-min)/range)*(h-pad*2);
+    const chrono=[...entries].reverse();
+    const vals=chrono.map(e=>e.total);
+    const min=Math.min(...vals), max=Math.max(...vals), range=(max-min)||1;
+    const w=500, h=80, pad=8;
+    const pts=vals.map((v,i)=>{
+      const x=pad+(i/(vals.length-1))*(w-pad*2);
+      const y=h-pad-((v-min)/range)*(h-pad*2);
       return x.toFixed(1)+','+y.toFixed(1);
     }).join(' ');
-    const svg = document.getElementById('spark');
-    svg.innerHTML = `<polyline points="${pts}" fill="none" stroke="#C2670F" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>` +
+    const svg=document.getElementById('spark');
+    svg.innerHTML=`<polyline points="${pts}" fill="none" stroke="#C2670F" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>`+
       vals.map((v,i)=>{
-        const x = pad + (i/(vals.length-1))*(w-pad*2);
-        const y = h - pad - ((v-min)/range)*(h-pad*2);
+        const x=pad+(i/(vals.length-1))*(w-pad*2);
+        const y=h-pad-((v-min)/range)*(h-pad*2);
         return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3" fill="#C2670F"/>`;
       }).join('');
-  } else {
-    sparkWrap.style.display='none';
-  }
+  } else { sparkWrap.style.display='none'; }
 }
 
 function renderHistory(){
-  const list = document.getElementById('history-list');
-  const emptyMsg = document.getElementById('empty-msg');
-  if(entries.length === 0){
-    list.innerHTML = '';
-    emptyMsg.style.display = 'block';
-    renderMetrics();
-    return;
-  }
-  emptyMsg.style.display = 'none';
-  list.innerHTML = entries.map((e, idx) => {
-    const older = entries[idx+1];
-    let deltaHtml = '';
+  const list=document.getElementById('history-list');
+  const emptyMsg=document.getElementById('empty-msg');
+  if(entries.length===0){ list.innerHTML=''; emptyMsg.style.display='block'; renderMetrics(); return; }
+  emptyMsg.style.display='none';
+  list.innerHTML=entries.map((e,idx)=>{
+    const older=entries[idx+1];
+    let deltaHtml='';
     if(older){
-      const diff = e.total - older.total;
-      const pct = older.total ? Math.abs(diff/older.total*100) : 0;
-      const cls = diff >= 0 ? 'up' : 'down';
-      const arrow = diff >= 0 ? '▲' : '▼';
-      deltaHtml = `<span class="delta ${cls}">${arrow} ${pct.toFixed(0)}%</span>`;
+      const diff=e.total-older.total;
+      const pct=older.total?Math.abs(diff/older.total*100):0;
+      const cls=diff>=0?'up':'down', arrow=diff>=0?'▲':'▼';
+      deltaHtml=`<span class="delta ${cls}">${arrow} ${pct.toFixed(0)}%</span>`;
     }
+    const userTag = e.user ? `<span style="font-size:11px;color:var(--ink-3);margin-left:4px;">· ${e.user}</span>` : '';
     return `<div class="entry">
       <div class="info">
-        <div class="d">${fmtDate(e.date)} · ${fmtInt(e.prev)} → ${fmtInt(e.curr)}</div>
+        <div class="d">${fmtDate(e.date)}${userTag} · ${fmtInt(e.prev)} → ${fmtInt(e.curr)}</div>
         <div class="u">${fmtInt(e.units)} หน่วย</div>
         ${deltaHtml}
       </div>
@@ -389,25 +515,23 @@ function renderHistory(){
       </button>
     </div>`;
   }).join('');
-
-  list.querySelectorAll('.del-btn').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const id = btn.getAttribute('data-id');
-      entries = entries.filter(e => String(e.id) !== id);
+  list.querySelectorAll('.del-btn').forEach(btn=>{
+    btn.addEventListener('click', async()=>{
+      const id=btn.getAttribute('data-id');
+      entries=entries.filter(e=>String(e.id)!==id);
       await persistEntries(entries);
-      renderHistory();
-      metersFromHistory();
+      renderHistory(); metersFromHistory();
     });
   });
-
   renderMetrics();
 }
 
-document.getElementById('save-btn').addEventListener('click', async () => {
-  if(!lastCalc || lastCalc.curr < lastCalc.prev) return;
-  const entry = {
+document.getElementById('save-btn').addEventListener('click', async()=>{
+  if(!lastCalc||lastCalc.curr<lastCalc.prev) return;
+  const entry={
     id: Date.now(),
     date: new Date().toISOString(),
+    user: currentUser,
     prev: lastCalc.prev,
     curr: lastCalc.curr,
     units: lastCalc.units,
@@ -416,32 +540,41 @@ document.getElementById('save-btn').addEventListener('click', async () => {
   entries.unshift(entry);
   await persistEntries(entries);
   renderHistory();
-
-  document.getElementById('curr').value = '';
+  document.getElementById('curr').value='';
   metersFromHistory();
   calc();
 
-  const toast = document.getElementById('toast');
+  const toast=document.getElementById('toast');
   toast.classList.add('show');
-  setTimeout(() => toast.classList.remove('show'), 1800);
+  setTimeout(()=>toast.classList.remove('show'), 1800);
+
+  // ส่งไป Google Sheet
+  if(SHEET_WEBHOOK_URL){
+    setSheetStatus('กำลังส่งไป Google Sheet…');
+    const result = await sendToSheet(entry);
+    if(result.ok) setSheetStatus('✓ บันทึกใน Google Sheet แล้ว', 'ok');
+    else setSheetStatus('⚠ ส่ง Google Sheet ไม่สำเร็จ — ข้อมูลเก็บในเครื่องแล้ว', 'err');
+  }
 });
 
-document.getElementById('export-btn').addEventListener('click', () => {
-  const blob = new Blob([JSON.stringify(entries, null, 2)], {type:'application/json'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'electricity-bill-history.json';
-  a.click();
+document.getElementById('export-btn').addEventListener('click',()=>{
+  const blob=new Blob([JSON.stringify(entries,null,2)],{type:'application/json'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a'); a.href=url; a.download='electricity-bill-history.json'; a.click();
   URL.revokeObjectURL(url);
 });
 
-['prev','curr','ft','mult'].forEach(id => {
-  document.getElementById(id).addEventListener('input', calc);
+['prev','curr','ft','mult'].forEach(id=>{
+  document.getElementById(id).addEventListener('input',calc);
 });
 
 (async function init(){
-  entries = await loadEntries();
+  updateSetupBanner();
+  // แสดง login ถ้ายังไม่มี user
+  if(!currentUser){ showLogin(); }
+  else { applyUser(currentUser); }
+
+  entries=await loadEntries();
   metersFromHistory();
   calc();
   renderHistory();
