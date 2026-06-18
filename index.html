@@ -137,10 +137,63 @@
   .delta{font-size:11.5px; padding:2px 7px; border-radius:6px; margin-top:3px; display:inline-block;}
   .delta.up{background:var(--bad-soft); color:var(--bad);}
   .delta.down{background:var(--good-soft); color:var(--good);}
-  .del-btn{background:none; border:none; color:var(--ink-3); cursor:pointer; padding:4px; flex-shrink:0;}
-  .del-btn:hover{color:var(--bad);}
-  .del-btn svg{width:16px; height:16px;}
+  .entry-actions{display:flex; gap:4px; flex-shrink:0;}
+  .del-btn,.edit-btn{background:none; border:none; color:var(--ink-3); cursor:pointer; padding:5px; border-radius:7px; transition:background .12s,color .12s;}
+  .del-btn:hover{color:var(--bad); background:var(--bad-soft);}
+  .edit-btn:hover{color:var(--accent); background:var(--accent-soft);}
+  .del-btn svg,.edit-btn svg{width:15px; height:15px; display:block;}
   .empty{font-size:13px; color:var(--ink-2); text-align:center; padding:24px 0;}
+
+  /* ─── Edit modal ─── */
+  .modal-overlay{
+    position:fixed; inset:0; background:rgba(28,32,28,.45); backdrop-filter:blur(3px);
+    display:flex; align-items:center; justify-content:center; z-index:200; padding:20px;
+    opacity:0; pointer-events:none; transition:opacity .18s;
+  }
+  .modal-overlay.open{opacity:1; pointer-events:all;}
+  .modal{
+    background:var(--surface); border:1px solid var(--border); border-radius:20px;
+    padding:24px 22px; width:100%; max-width:380px;
+    box-shadow:0 8px 40px rgba(28,32,28,.18);
+    transform:translateY(12px); transition:transform .18s;
+  }
+  .modal-overlay.open .modal{transform:translateY(0);}
+  .modal-title{font-family:var(--font-display); font-size:16px; font-weight:600; margin:0 0 18px; display:flex; justify-content:space-between; align-items:center;}
+  .modal-close{background:none; border:none; color:var(--ink-3); cursor:pointer; padding:2px; line-height:1;}
+  .modal-close svg{width:18px; height:18px;}
+  .modal-row2{display:grid; grid-template-columns:1fr auto 1fr; gap:8px; align-items:end; margin-bottom:12px;}
+  .modal label{display:block; font-size:12px; color:var(--ink-2); margin-bottom:5px;}
+  .modal input[type=number]{
+    width:100%; font-family:var(--font-mono); font-size:16px; font-weight:500;
+    padding:9px 11px; border:1px solid var(--border); border-radius:9px;
+    background:var(--bg); color:var(--ink); transition:border-color .15s,box-shadow .15s;
+  }
+  .modal input[type=number]:focus{outline:none; border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft);}
+  .modal-preview{
+    background:var(--surface-2); border-radius:10px; padding:10px 13px; margin-bottom:16px;
+    display:flex; justify-content:space-between; align-items:center;
+  }
+  .modal-preview .lbl{font-size:12px; color:var(--ink-2);}
+  .modal-preview .val{font-family:var(--font-mono); font-weight:600; font-size:16px;}
+  .modal-warn{font-size:12px; color:var(--bad); margin:-6px 0 10px; display:none;}
+  .modal-actions{display:flex; gap:8px;}
+  .modal-actions button{flex:1; padding:11px; border-radius:11px; font-family:var(--font-display); font-weight:600; font-size:14px; cursor:pointer; border:none; transition:opacity .15s;}
+  .btn-cancel{background:var(--surface-2); color:var(--ink);}
+  .btn-save-edit{background:var(--accent); color:#fff;}
+  .btn-save-edit:disabled{background:var(--ink-3); cursor:not-allowed;}
+
+  /* ─── History filter chip ─── */
+  .filter-row{display:flex; align-items:center; gap:8px; margin-bottom:12px;}
+  .filter-chip{
+    font-size:12px; padding:4px 12px; border-radius:20px; border:1px solid var(--border);
+    background:var(--surface-2); color:var(--ink-2); cursor:pointer; font-family:var(--font-body);
+    transition:background .12s,color .12s,border-color .12s;
+  }
+  .filter-chip.active{background:var(--accent); color:#fff; border-color:var(--accent);}
+  .filter-label{font-size:12px; color:var(--ink-3);}
+
+  .backup{display:flex; gap:8px; justify-content:center; margin-top:18px;}
+  .backup label{display:inline-block; margin:0;}
 
   .backup{display:flex; gap:8px; justify-content:center; margin-top:18px;}
   .backup label{display:inline-block; margin:0;}
@@ -290,6 +343,13 @@
     <button class="ghost-btn" id="export-btn">ส่งออกข้อมูล</button>
   </div>
 
+  <!-- Filter chips -->
+  <div class="filter-row" id="filter-row">
+    <span class="filter-label">แสดง:</span>
+    <button class="filter-chip active" id="chip-mine">ของฉัน</button>
+    <button class="filter-chip" id="chip-all">ทั้งหมด</button>
+  </div>
+
   <div class="metrics" id="metrics" style="display:none;">
     <div class="metric"><div class="lbl">เฉลี่ยต่อรอบ</div><div class="val" id="avg-units">–</div></div>
     <div class="metric"><div class="lbl">ค่าไฟเฉลี่ย</div><div class="val" id="avg-total">–</div></div>
@@ -305,12 +365,44 @@
 
 </div>
 
+<!-- ─── Edit Modal ─── -->
+<div class="modal-overlay" id="edit-modal">
+  <div class="modal">
+    <div class="modal-title">
+      <span>แก้ไขรายการ</span>
+      <button class="modal-close" id="modal-close-btn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-row2">
+      <div>
+        <label>เลขมิเตอร์ก่อน</label>
+        <input type="number" id="edit-prev" inputmode="decimal">
+      </div>
+      <div class="arrow" style="padding-bottom:10px; color:var(--ink-3);">→</div>
+      <div>
+        <label>เลขมิเตอร์ปัจจุบัน</label>
+        <input type="number" id="edit-curr" inputmode="decimal">
+      </div>
+    </div>
+    <p class="modal-warn" id="modal-warn">เลขปัจจุบันต้องมากกว่าหรือเท่ากับก่อน</p>
+    <div class="modal-preview">
+      <span class="lbl">ยอดที่ต้องชำระ</span>
+      <span class="val" id="modal-total">–</span>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" id="modal-cancel-btn">ยกเลิก</button>
+      <button class="btn-save-edit" id="modal-save-btn">บันทึก</button>
+    </div>
+  </div>
+</div>
+
 <script>
 // ══════════════════════════════════════════════
 //  ⚡ ตั้งค่า Google Sheet Web App URL ตรงนี้
 //  ดูวิธีสร้างได้ในไฟล์ SETUP_GOOGLE_SHEET.md
 // ══════════════════════════════════════════════
-const SHEET_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbzXoG_vMKT8ZORMzLKapH99OjLcWkzuvBv-iAw-eR_gHoG4cdFWJSQJQhmnC1ldLY_tig/exec';   // ← วาง URL ของคุณตรงนี้
+const SHEET_WEBHOOK_URL = '';   // ← วาง URL ของคุณตรงนี้
 
 // ─── Storage keys ───
 const STORAGE_KEY = 'entries';
